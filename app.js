@@ -1655,6 +1655,9 @@ class App {
           const notesEl = document.getElementById('bill-notes');
           if (notesEl) notesEl.value = bill.notes;
         }
+      } else {
+        const dueEl = document.getElementById('bill-due-date');
+        if (dueEl) dueEl.value = this._todayString();
       }
     } else if (type === 'savings') {
       modalId = 'modal-savings';
@@ -1885,17 +1888,19 @@ class App {
       this.notificationManager.show('Jumlah harus lebih dari 0!', 'error');
       return;
     }
-    const dd = parseInt(dueDate);
-    if (dd < 1 || dd > 31) {
-      this.notificationManager.show('Tanggal jatuh tempo harus antara 1-31!', 'error');
+    
+    // Validate date
+    const d = new Date(dueDate);
+    if (isNaN(d.getTime())) {
+      this.notificationManager.show('Format tanggal tidak valid!', 'error');
       return;
     }
 
     if (this.editingBillId) {
-      this.billManager.update(this.editingBillId, { name, amount, dueDate: dd, category, notes });
+      this.billManager.update(this.editingBillId, { name, amount, dueDate: dueDate, category, notes });
       this.notificationManager.show('Tagihan berhasil diperbarui!', 'success');
     } else {
-      this.billManager.add({ name, amount, dueDate: dd, category, notes });
+      this.billManager.add({ name, amount, dueDate: dueDate, category, notes });
       this.notificationManager.show('Tagihan berhasil ditambahkan!', 'success');
     }
 
@@ -1959,7 +1964,8 @@ class App {
     const filteredBills = this.billManager.bills.filter(bill => {
       if (!filterStart && !filterEnd) return true;
       
-      const billDate = new Date(currentYear, currentMonth, bill.dueDate);
+      if (!bill.dueDate) return false;
+      const billDate = new Date(bill.dueDate);
       billDate.setHours(0,0,0,0);
 
       if (filterStart) {
@@ -1984,12 +1990,20 @@ class App {
       return;
     }
 
-    const sorted = [...filteredBills].sort((a, b) => a.dueDate - b.dueDate);
-    const today = now.getDate();
+    // Sort by dueDate
+    const sorted = [...filteredBills].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
     container.innerHTML = sorted.map(bill => {
-      const isOverdue = !bill.paidThisMonth && bill.dueDate < today;
-      const isDueSoon = !bill.paidThisMonth && bill.dueDate >= today && bill.dueDate - today <= 3;
+      const bDate = new Date(bill.dueDate);
+      bDate.setHours(0,0,0,0);
+      const todayDate = new Date();
+      todayDate.setHours(0,0,0,0);
+      
+      const diffTime = bDate - todayDate;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      const isOverdue = !bill.paidThisMonth && diffDays < 0;
+      const isDueSoon = !bill.paidThisMonth && diffDays >= 0 && diffDays <= 3;
       let statusClass = '';
       let statusText = '';
       if (bill.paidThisMonth) {
@@ -2836,8 +2850,9 @@ App.prototype.setupEventListeners = function() {
       const type = document.getElementById('debt-type').value;
       const person = document.getElementById('debt-person').value;
       const amount = document.getElementById('debt-amount').value;
+      const startDate = document.getElementById('debt-start-date').value;
       const dueDate = document.getElementById('debt-due').value;
-      this.debtManager.add({ type, person, amount, dueDate });
+      this.debtManager.add({ type, person, amount, startDate, dueDate });
       this.notificationManager.show('Catatan berhasil ditambahkan!', 'success');
       this.closeModal('modal-debt');
       this.saveData();
@@ -3008,6 +3023,7 @@ App.prototype.renderDebtList = function() {
           <div class="debt-type-badge ${d.type}">${isPay ? 'HUTANG' : 'PIUTANG'}</div>
         </div>
         <div class="debt-amount">${this.formatCurrency(d.amount)}</div>
+        ${d.startDate ? `<div style="font-size:12px;color:var(--text-secondary);">Tanggal Pinjam: ${this.formatDate(d.startDate)}</div>` : ''}
         ${d.dueDate ? `<div style="font-size:12px;color:var(--text-secondary);">Jatuh Tempo: ${this.formatDate(d.dueDate)}</div>` : ''}
         <div class="debt-footer">
           <button class="btn-ghost btn-sm" onclick="app.payDebt('${d.id}')">✓ Tandai Lunas</button>
